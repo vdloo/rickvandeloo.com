@@ -1,0 +1,10 @@
+name: "rickvandeloo.com"
+description: "Homepage of Rick van de Loo"
+
+url: "http://rickvandeloo.com"
+
+paginate: 10
+
+markdown: rdiscount
+permalink: pretty
+pygments: true

@@ -1,0 +1,15 @@
+<div id="about"><h3>About me</h3></div>
+
+<p>
+Rick van de Loo, media student with a passion for open source and programming. I also like to read.
+<br>
+<br>
+Find me on <a href="https://twitter.com/rickvandeloo">Twitter</a> and <a href="https://github.com/vdloo">Github</a>, or <a href="mailto:contact@rickvandeloo.com">drop me a line</a></p>
+<hr>
+
+<p>Other posts:</p>
+<ul>
+  {% for post in site.posts limit: 5 %}
+    <li><a href="{{ post.url }}">{{ post.title }}</a></li>
+  {% endfor %}
+</ul>
