@@ -1,5 +1,5 @@
 ---
-title: `Not authorized to use this service` in DS Audio and Video 
+title: Not authorized to use this service in DS Audio and Video 
 layout: post
 ---
 Since I updated my phone to iOS7 I've been encountering the following error when attempting to log in using the DS Audio and Video apps.

@@ -2,7 +2,6 @@
 title: Implementing Fibonacci in finite fields, in racket
 layout: post
 ---
-###Implementing Fibonacci in finite fields, in racket
 A couple of days ago [Ruud van Asseldonk](https://github.com/ruud-v-a)
 submitted a post about [Fibonacci numbers in finite
 fields](http://ruudvanasseldonk.com/2014/07/01/fibonacci-numbers-in-finite-fields).
