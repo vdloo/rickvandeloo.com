@@ -25,60 +25,60 @@ Porting the first two function is pretty straight forward.
 
 The original addmod function
 {% highlight cpp %}
-    u64 addmod(u64 a, u64 b, u64 p)
-    {
-      if (p - b > a) return a + b;
-      else return a + b - p;
-    }
+u64 addmod(u64 a, u64 b, u64 p)
+{
+	if (p - b > a) return a + b;
+	else return a + b - p;
+}
 {% endhighlight %}
 
 becomes:
 {% highlight racket %}
-    (define (addmod a b p)
-      (if  (> (- p b) a)
-          (+ a b)
-          (- (+ a b) p)
-      )
-    )
+(define (addmod a b p)
+	(if  (> (- p b) a)
+	  (+ a b)
+	  (- (+ a b) p)
+	)
+)
 {% endhighlight %}
 
 and the original submod function
 
 {% highlight cpp %}
-    u64 submod(u64 a, u64 b, u64 p)
-    {
-      if (a >= b) return a - b;
-      else return p - b + a;
-    }
+u64 submod(u64 a, u64 b, u64 p)
+{
+	if (a >= b) return a - b;
+	else return p - b + a;
+}
 {% endhighlight %}
 
 becomes:
 
 {% highlight racket %}
-    (define (submod a b p)
-      (if (>= a b)
-          (- a b)
-          (+ (- p b) a)
-      )
-    )
+(define (submod a b p)
+	(if (>= a b)
+	  (- a b)
+	  (+ (- p b) a)
+	)
+)
 {% endhighlight %}
 
 The mulmod function is a bit more complicated:
 
 {% highlight cpp %}
-    u64 mulmod(u64 a, u64 b, u64 p)
-    {
-      u64 r = 0;
+u64 mulmod(u64 a, u64 b, u64 p)
+{
+	u64 r = 0;
 
-      while (b > 0)
-      {
-        if (b & 1) r = addmod(r, a, p);
-        b >>= 1;
-        a = addmod(a, a, p);
-      }
+	while (b > 0)
+	{
+		if (b & 1) r = addmod(r, a, p);
+		b >>= 1;
+		a = addmod(a, a, p);
+	}
 
-      return r;
-    }
+	return r;
+}
 {% endhighlight %}
 
 The implementation in scheme displays more clearly the difference
@@ -87,19 +87,19 @@ implementation in scheme is ostensibly inside out compared to the
 original.
 
 {% highlight racket %}
-    (define (mulmod a b p)
-      (mulmod_rec a b p 0)
-    )
-    (define (mulmod_rec a b p r)
-      (if (> b 0)
-          (mulmod_rec (addmod a a p)
-                  (arithmetic-shift b -1)
-                  p
-                  (if (= 1 (bitwise-and b 1)) (addmod a r p) r)
-          )
-          r
-      )
-    )
+(define (mulmod a b p)
+	(mulmod_rec a b p 0)
+)
+(define (mulmod_rec a b p r)
+	(if (> b 0)
+	  (mulmod_rec (addmod a a p)
+		  (arithmetic-shift b -1)
+		  p
+		  (if (= 1 (bitwise-and b 1)) (addmod a r p) r)
+	  )
+	  r
+	)
+)
 {% endhighlight %}
 
 Instead of a while loop, the scheme implementation of mulmod calls
@@ -124,37 +124,37 @@ does](http://docs.racket-lang.org/reference/generic-numbers.html#%28part._.Bitwi
 Next up is powmod:
 
 {% highlight cpp %}
-    u64 powmod(u64 a, u64 e, u64 p)
-    {
-      u64 r = 1;
-      
-      while (e > 0)
-      {
-        if (e & 1) r = mulmod(r, a, p);
-        e >>= 1;
-        a = mulmod(a, a, p);
-      }
+u64 powmod(u64 a, u64 e, u64 p)
+{
+	u64 r = 1;
 
-      return r;
-    }
+	while (e > 0)
+	{
+		if (e & 1) r = mulmod(r, a, p);
+		e >>= 1;
+		a = mulmod(a, a, p);
+	}
+
+	return r;
+}
 {% endhighlight %}
 
 Which follows almost the exact same structure as mulmod:
 
 {% highlight racket %}
-    (define (powmod a e p)
-      (powmod_rec a e p 1)
-    )
-    (define (powmod_rec a e p r)
-      (if (> e 0)
-          (powmod_rec (mulmod a a p)
-                  (arithmetic-shift e -1)
-                  p
-                  (if (= 1 (bitwise-and e 1)) (mulmod r a p) r)
-          )
-          r
-      )
-    )
+(define (powmod a e p)
+	(powmod_rec a e p 1)
+)
+(define (powmod_rec a e p r)
+	(if (> e 0)
+		(powmod_rec (mulmod a a p)
+			(arithmetic-shift e -1)
+			p
+			(if (= 1 (bitwise-and e 1)) (mulmod r a p) r)
+		)
+		r
+	)
+)
 {% endhighlight %}
 
 Note that instead of doing assigning 0 to r before the while loop in
@@ -164,41 +164,41 @@ mulmod\_rec. The same goes for powmod and powmod\_rec.
 To tie it all together we have the fib function:
 
 {% highlight cpp %}
-    u64 fib(u64 n)
-    {
-      u64 p     = 0xa94fad42221f27ad;
-      u64 v     = 0x0b92025517515f58;
-      u64 v_inv = 0x242d231e3eb01b01;
+u64 fib(u64 n)
+{
+	u64 p     = 0xa94fad42221f27ad;
+	u64 v     = 0x0b92025517515f58;
+	u64 v_inv = 0x242d231e3eb01b01;
 
-      u64 a        = powmod(1 + v, n, p);
-      u64 b        = powmod(p + 1 - v, n, p);
-      u64 pow2_inv = powmod(2, p - 1 - n, p);
+	u64 a        = powmod(1 + v, n, p);
+	u64 b        = powmod(p + 1 - v, n, p);
+	u64 pow2_inv = powmod(2, p - 1 - n, p);
 
-      u64 diff   = submod(a, b, p);
-      u64 factor = mulmod(v_inv, pow2_inv, p);
+	u64 diff   = submod(a, b, p);
+	u64 factor = mulmod(v_inv, pow2_inv, p);
 
-      return mulmod(diff, factor, p);
-    }
+	return mulmod(diff, factor, p);
+}
 {% endhighlight %}
 
 Which in Racket looks like:
 
 {% highlight racket %}
-    (define (fib n)
-      (define (q)     12200160415121876909)
-      (define (v)     833731445503647576)
-      (define (v_inv) 2606778372125104897)
-      (mulmod (submod (powmod (+ 1 (v)) n (q))
-                      (powmod (- (+ (q) 1) (v)) n (q))
-                      (q)
-              )
-              (mulmod (v_inv)
-                      (powmod 2 (- (q) 1 n) (q))
-                      (q)
-              )
-              (q)
-      )
-    )
+(define (fib n)
+	(define (q)     12200160415121876909)
+	(define (v)     833731445503647576)
+	(define (v_inv) 2606778372125104897)
+	(mulmod (submod (powmod (+ 1 (v)) n (q))
+		      (powmod (- (+ (q) 1) (v)) n (q))
+		      (q)
+	      )
+	      (mulmod (v_inv)
+		      (powmod 2 (- (q) 1 n) (q))
+		      (q)
+	      )
+	      (q)
+	)
+)
 {% endhighlight %}
 
 So now we have all the components to generate a Fibonacci number. It
@@ -212,20 +212,20 @@ faster to use the regular iterative method if you are going to calculate
 all the numbers anyway, but that doesn't take away the fun.
 
 {% highlight racket %}
-    (define (fib-iter n count result)
-      (display "Computing fib for ")(display count)(display ": ")
-      (display result)(newline)
-      (when (< count n)
-          (fib-iter n
-                    (+ count 1)
-                    (fib count)
-          )
-       )
-    )
-    (define (multifib n)
-      (fib-iter n 1 0)
-    )
-    (multifib 93)
+(define (fib-iter n count result)
+	(display "Computing fib for ")(display count)(display ": ")
+	(display result)(newline)
+	(when (< count n)
+	  (fib-iter n
+		    (+ count 1)
+		    (fib count)
+	  )
+	)
+)
+(define (multifib n)
+	(fib-iter n 1 0)
+)
+(multifib 93)
 {% endhighlight %}
 
 And that's all there is to it: a racket fibonacci calculator that runs
