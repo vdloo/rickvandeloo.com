@@ -2,8 +2,6 @@
 title: Partially synchronising a structured folder (on a Synology machine) to a smaller storage
 layout: post
 ---
-Partially synchronising a structured folder (on a Synology machine) to
-a smaller storage
 
 One of the most enjoyable things writing code has to offer is automating
 tasks to the point where you can completely forget about them. There is
