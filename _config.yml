@@ -6,4 +6,4 @@ paginate_path: "/page:num/"
 markdown: rdiscount
 permalink: pretty
 highlighter: pygments
-exclude: [build.sh, generated]
+exclude: [build.sh, build]
