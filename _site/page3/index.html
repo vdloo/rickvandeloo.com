@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>rickvandeloo.com</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Homepage of Rick van de Loo">
+
+    <link href="/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+      body {
+        padding-top: 60px;
+      }
+    </style>
+    <link href="/css/bootstrap-responsive.min.css" rel="stylesheet">
+    <link href="/css/zenburn.css" rel="stylesheet">
+
+    <!-- HTML5 shim, for IE6-8 support of HTML5 elements -->
+    <!--[if lt IE 9]>
+      <script src="http://html5shim.googlecode.com/svn/trunk/html5.js"></sc\
+ript>
+    <![endif]-->
+  </head>
+
+  <body>
+
+    <div class="navbar navbar-inverse navbar-fixed-top">
+      <div class="navbar-inner">
+        <div class="container">
+          <a class="brand" href="/">rickvandeloo.com</a>
+            <ul class="nav">
+              <li class="active"><a href="/">Home</a></li>
+              <li class="btn-navbar active" style="padding: 0;"><a href="#about">About</a></li>
+            </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="container">
+
+<div class="row-fluid">
+  <div class="span8">
+    
+
+<div class="row-fluid">
+  <div class="span12">
+    <h2><a href="/2013/09/21/Fixing-the-ds-audio-and-video-you-are-not-authorized-to-use-this-service-error/">Not authorized to use this service in DS Audio and Video</a></h2>
+    <h4>21 September 2013</h4>
+	<p>Since I updated my phone to iOS7 I've been encountering the following error when attempting to log in using the DS Audio and Video apps.
+<br>
+<br></p>
+
+<p style="text-align:center;"> <em>"you are not authorized to use this service"</em></p>
+
+<p><br>
+Reinstalling the apps didn't solve the issue for me and the error seemed exclusive to my phone as logging in still worked flawlessly on other devices running the same version of the OS.</p>
+
+<p>Since I didn't want to resort to resetting my phone, I did some more troubleshooting and these are the solutions (and possible problems causing the error) I came across, so if you are experiencing the same error, trying these things might save you a headache.</p>
+
+<p><br></p>
+
+<h3>Checking the automatic block-list</h3>
+
+<p>To check if this problem is causing your error, change the ip address of your iOS device and attempt to log in. If the error no longer occurs, there is a good chance that the Synology NAS has blocked your ip address.</p>
+
+<p>To make sure this was the cause of the problem, and to possibly prevent future similar things from happening do the following:</p>
+
+<p>In the DSM control panel, click on the icon of Auto Block and see if you have this option enabled. Also check the Block List tab to see if some (or any) of the ips listed there are those of your devices.</p>
+
+<p>If you have shell access to the NAS you can also look in the files /etc/host.deny and /etc/hosts.allow to see if there is anything interesting there that might prevent you from logging in.
+<br><br></p>
+
+<h3>Updating the DSM time settings</h3>
+
+<p>If the previous bullet point didn't solve your problem, you might try updating the time settings of your DSM. Do this in Control Panel -> Regional Options -> Time. Try changing the Time Setting from 'Manually' to 'Synchronize with a NTP server' and press the 'Update Now' button. An offset of a couple of minutes could be enough to cause the 'you are not authorized to use this service' error. To achieve the same effect from the commandline, you could also run the following command:</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="c"># ntpd -q</span></code></pre></div>
+
+
+<p><br></p>
+
+<h3>Changing the iOS time setting from '24-Hour Time' to '12-Hour Time'</h3>
+
+<p>This step is what I think finally solved the problem for me. For some reason the combination of turning off 24 Hour time (and restarting the phone) was what enabled me to log into the Audio Station using the DS Audio app once again. I have no idea if this was what actually caused the problem, and I couldn't reproduce the problem afterwards either, but if the previous approaches were of no help, you could give it a shot.</p>
+
+<p>If these three things didn't solve the problem for you, you could try to enable logging in the Audio Station -> Settings -> Options menu to take a look under the hood, and maybe this log in combination with the /var/log/synolog file will give you some insights on what might be the cause of your problem.</p>
+
+	
+  </div>
+    <p>
+      <a href="/2013/09/21/Fixing-the-ds-audio-and-video-you-are-not-authorized-to-use-this-service-error/">Permalink</a>
+    </p>
+</div>
+<hr>
+
+
+
+<div class="row-fluid">
+  <div class="span12">
+    <h2><a href="/2012/08/01/Sending-data-over-Wi-Fi-without-associations/">Sending data over Wi-Fi without associations</a></h2>
+    <h4>01 August 2012</h4>
+	<h3>Sending data over Wi-Fi without associations</h3>
+
+<p>For the past couple of months I’ve been on and off working on a project I call <a href="http://i.imgur.com/YFyPY.png">sailingstone</a>, although that particular project probably won’t see the light of day for a long time (if ever) it did point me in a direction that I found remarkably interesting. I needed to find a way to transmit data from one wireless card to another, without a router in between. There already exist various ad-hoc methods to achieve this, however most of them focus on a sole connection between two devices. For purposes such as mesh-networking it would be nice to be able to change connections swiftly or even broadcast to multiple nodes.</p>
+
+<p>My first instinct was to just hurl packets into the air and have other nodes catch them. Imagine one laptop sending some bytes into the air containing a message, and another one grabbing those bytes. Unfortunately, that is not how things work. Wireless networking works by packing data into things called <a href="http://en.wikipedia.org/wiki/IEEE_802.11#Frames">frames</a>. This way a computer can very quickly decide if it has a use for an incoming packet by looking at the header. If that header does not meet the criteria of what your wireless card is configured for, it just ignores the packet and goes on to the next one.</p>
+
+<p>You could modify how your wireless card acts by patching your drivers, but that wouldn’t be very practical due to incompatibility with other devices. Instead of doing that, we will utilize the existing infrastructure and add our data to a recognized frame. Using a tool called <a href="http://homepages.tu-darmstadt.de/~p_larbig/wlan/#mdk3">mdk3</a> I generated a fake beacon frame for an encrypted access point with the SSID ‘stone’. This is where it gets a bit technical.</p>
+
+<p>Let’s create two programs, the first one being a transmitter and the second one being a receiver:</p>
+
+<p><a href="https://github.com/vdloo/Beacontalk/blob/master/extra/transmitter.c">transmitter.c</a>
+<a href="https://github.com/vdloo/Beacontalk/blob/master/extra/receiver.c">receiver.c</a></p>
+
+<p>To compile these programs use the -lpcap flag:</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="nv">$ </span>gcc transmitter.c -o transmitter -lpcap
+<span class="nv">$ </span>gcc receiver.c -o receiver -lpcap</code></pre></div>
+
+
+<p>In transmitter.c you can see how memcpy is used to first copy the frame header into the variable buf. This is interesting because you could use this method to capture any beacon frame, grab the header, and re-broadcast it with your added data. The crafted packet gets broadcast using the pcap_sendpacket function.</p>
+
+<div class="highlight"><pre><code class="language-c" data-lang="c"><span class="n">u_char</span> <span class="n">buf</span><span class="p">[</span><span class="mi">1024</span><span class="p">];</span>
+<span class="kt">char</span> <span class="n">message</span><span class="p">[</span><span class="mi">850</span><span class="p">],</span> <span class="n">messagelen</span><span class="p">[</span><span class="mi">6</span><span class="p">];</span>
+<span class="kt">char</span> <span class="n">size</span><span class="p">[]</span> <span class="o">=</span> <span class="s">&quot;size&quot;</span><span class="p">,</span> <span class="n">end</span><span class="p">[]</span> <span class="o">=</span> <span class="s">&quot;end&quot;</span><span class="p">;</span>
+<span class="kt">char</span> <span class="n">type</span><span class="p">[]</span> <span class="o">=</span>  <span class="s">&quot;\x0\x0\xd\x0\x4</span><span class="se">\x80</span><span class="s">\x2\x0\x2\x0\x0&quot;</span>
+        <span class="s">&quot;\x0\x0</span><span class="se">\x80</span><span class="s">\x0\x0\x0</span><span class="se">\xff\xff\xff\xff</span><span class="s">&quot;</span>
+        <span class="s">&quot;</span><span class="se">\xff\xff\xf8\xb7\x6f\x7b\xc2\x59\xf8</span><span class="s">&quot;</span>
+        <span class="s">&quot;</span><span class="se">\xb7\x6f\x7b\xc2\x59</span><span class="s">\x0\x0\x0\x0\x0&quot;</span>
+        <span class="s">&quot;\x0\x0\x0\x0\x0</span><span class="se">\x64</span><span class="s">\x0</span><span class="se">\x11</span><span class="s">\x0\x0\x5&quot;</span>
+        <span class="s">&quot;</span><span class="se">\x73\x74\x6f\x6e\x65</span><span class="s">\x1\x4</span><span class="se">\x82\x84</span><span class="s">&quot;</span>
+        <span class="s">&quot;</span><span class="se">\x8b\x96</span><span class="s">\x3\x1\xc\x4\x6\x1\x2\x0\x0&quot;</span>
+        <span class="s">&quot;\x0\x0\x5\x4\x0\x1\x0\x0</span><span class="se">\xdd\x18</span><span class="s">\x0&quot;</span>
+        <span class="s">&quot;</span><span class="se">\x50\xf2</span><span class="s">\x1\x1\x0\x0</span><span class="se">\x50\xf2</span><span class="s">\x4\x1&quot;</span>
+        <span class="s">&quot;\x0\x0</span><span class="se">\x50\xf2</span><span class="s">\x4\x1\x0\x0</span><span class="se">\x50\xf2</span><span class="s">&quot;</span>
+        <span class="s">&quot;\x2\x0\x0&quot;</span><span class="p">;</span> <span class="cm">/* stone beacon frame header */</span>
+<span class="cm">/* adds the beacon frame */</span> 
+<span class="n">memcpy</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">type</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">type</span><span class="p">));</span>
+
+<span class="cm">/* adds the size marker */</span>
+<span class="n">memcpy</span><span class="p">(</span><span class="n">buf</span><span class="o">+</span><span class="k">sizeof</span><span class="p">(</span><span class="n">type</span><span class="p">),</span> <span class="n">size</span><span class="p">,</span> <span class="n">strlen</span><span class="p">(</span><span class="n">size</span><span class="p">));</span>
+
+<span class="cm">/*adds the size number */</span>
+<span class="n">sprintf</span><span class="p">(</span><span class="n">messagelen</span><span class="p">,</span> <span class="s">&quot;%.5d&quot;</span><span class="p">,</span> <span class="n">strlen</span><span class="p">(</span><span class="n">message</span><span class="p">));</span>
+<span class="n">memcpy</span><span class="p">(</span><span class="n">buf</span><span class="o">+</span><span class="k">sizeof</span><span class="p">(</span><span class="n">type</span><span class="p">)</span><span class="o">+</span><span class="n">strlen</span><span class="p">(</span><span class="n">size</span><span class="p">),</span> <span class="n">messagelen</span><span class="p">,</span> <span class="mi">5</span><span class="p">);</span>
+
+<span class="cm">/* adds the message */</span>
+<span class="n">memcpy</span><span class="p">(</span><span class="n">buf</span><span class="o">+</span><span class="k">sizeof</span><span class="p">(</span><span class="n">type</span><span class="p">)</span><span class="o">+</span><span class="n">strlen</span><span class="p">(</span><span class="n">size</span><span class="p">)</span><span class="o">+</span><span class="k">sizeof</span><span class="p">(</span><span class="n">messagelen</span><span class="p">),</span> <span class="n">message</span><span class="p">,</span> <span class="n">strlen</span><span class="p">(</span><span class="n">message</span><span class="p">));</span>
+
+<span class="cm">/* adds end marker */</span>   
+<span class="n">memcpy</span><span class="p">(</span><span class="n">buf</span><span class="o">+</span><span class="k">sizeof</span><span class="p">(</span><span class="n">type</span><span class="p">)</span><span class="o">+</span><span class="n">strlen</span><span class="p">(</span><span class="n">size</span><span class="p">)</span><span class="o">+</span><span class="k">sizeof</span><span class="p">(</span><span class="n">messagelen</span><span class="p">)</span><span class="o">+</span><span class="n">strlen</span><span class="p">(</span><span class="n">message</span><span class="p">),</span> <span class="n">end</span><span class="p">,</span> <span class="n">strlen</span><span class="p">(</span><span class="n">end</span><span class="p">));</span></code></pre></div>
+
+
+<p>The receiving end should be pretty straightforward if you are familiar with the pcap library. In receiver.c, pcap_loop is used to capture incoming packets and gets them processed by using got_packet, which is a callback function. This means that every time a packet gets captured it is passed to that function as a parameter. This function then subjects the packet to the following lines of code to determine if the packet meets our filter’s demands (i.e. having ‘stone’ as the SSID and having a valid size marker). When everything is in order, it will print the message sent by the server character by character.</p>
+
+<div class="highlight"><pre><code class="language-c" data-lang="c"><span class="cm">/* drop everything that does not contain &quot;x0\x11\x0\x0\x5\x73\x74\x6F\x6E\x65&quot; */</span>
+<span class="n">identified</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+<span class="k">for</span> <span class="p">(</span><span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">300</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">){</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">identified</span> <span class="o">==</span> <span class="mi">0</span> <span class="o">&amp;&amp;</span> <span class="n">packet</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;s&#39;</span> <span class="o">&amp;&amp;</span> <span class="n">packet</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;t&#39;</span> <span class="o">&amp;&amp;</span> <span class="n">packet</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;o&#39;</span> <span class="o">&amp;&amp;</span> <span class="n">packet</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">3</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;n&#39;</span> <span class="o">&amp;&amp;</span> <span class="n">packet</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">4</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;e&#39;</span><span class="p">){</span>
+                <span class="n">identified</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span> 
+        <span class="p">}</span>       
+<span class="p">}</span>       
+<span class="k">if</span> <span class="p">(</span><span class="n">identified</span><span class="p">){</span>
+        <span class="cm">/* looks for beginning of datastring and its size */</span> 
+        <span class="n">start</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+        <span class="n">intlength</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+        <span class="k">for</span> <span class="p">(</span><span class="n">i</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">1024</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">){</span>
+                <span class="k">if</span> <span class="p">(</span><span class="n">start</span> <span class="o">==</span> <span class="mi">0</span> <span class="o">&amp;&amp;</span> <span class="n">packet</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;s&#39;</span> <span class="o">&amp;&amp;</span> <span class="n">packet</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;i&#39;</span> <span class="o">&amp;&amp;</span> <span class="n">packet</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;z&#39;</span> <span class="o">&amp;&amp;</span> <span class="n">packet</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">3</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;e&#39;</span><span class="p">){</span>
+                        <span class="n">start</span> <span class="o">=</span> <span class="n">i</span><span class="p">;</span>
+                <span class="p">}</span>       
+        <span class="p">}</span>       
+        <span class="k">if</span> <span class="p">(</span><span class="n">start</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">){</span>
+                <span class="k">for</span> <span class="p">(</span><span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">5</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">){</span>
+                        <span class="n">charlength</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">packet</span><span class="p">[</span><span class="n">start</span><span class="o">+</span><span class="n">i</span><span class="o">+</span><span class="mi">4</span><span class="p">];</span>
+                <span class="p">}</span>       
+                <span class="n">intlength</span> <span class="o">=</span> <span class="n">atoi</span><span class="p">(</span><span class="n">charlength</span><span class="p">);</span>
+        <span class="p">}</span>       
+
+        <span class="cm">/* print output */</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">intlength</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">){</span>
+                <span class="k">for</span> <span class="p">(</span><span class="n">i</span> <span class="o">=</span> <span class="n">start</span><span class="o">+</span><span class="mi">9</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;=</span> <span class="n">start</span><span class="o">+</span><span class="mi">9</span><span class="o">+</span><span class="n">intlength</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">){</span>
+                        <span class="n">fprintf</span><span class="p">(</span><span class="n">stdout</span><span class="p">,</span> <span class="s">&quot;%c&quot;</span><span class="p">,</span> <span class="n">packet</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span>
+                <span class="p">}</span>       
+        <span class="p">}</span>       
+<span class="p">}</span></code></pre></div>
+
+
+<p>To run the programs you must make sure of a couple of things. Firstly, make sure to have the proper permissions to use the wireless adapter. Secondly make sure that the wireless adapter(s) that you will be using is/are in monitor mode. And lastly that the transmitter and the receiver are using the same frequency (channel).</p>
+
+<p>Running the program as root (or sudo) should take care of the permissions. If you are using the madwifi drivers you can do the following to get the wireless adapter into monitor mode. I am not sure on how to go about this with other drivers, but Google can probably help you with that.</p>
+
+<p>Firstly bring the adapter down using:</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="nv">$ </span>ifconfig wlan0 down</code></pre></div>
+
+
+<p>Then do this to put the device in monitor mode:</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="nv">$ </span>iwconfig wlan0 mode monitor</code></pre></div>
+
+
+<p>Where wlan0 is your wireless adapter.</p>
+
+<p>To change the channel of your device you can do:</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="nv">$ </span>iwconfig wlan0 channel 1</code></pre></div>
+
+
+<p>Or alternatively enter frequency manually:</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="nv">$ </span>iwconfig wlan0 freq 2.412G</code></pre></div>
+
+
+<p>Finally bring your adapter back online with:</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="nv">$ </span>ifconfig wlan0 up</code></pre></div>
+
+
+<p>If you did this for both the devices you are going to use, you should now be ready to successfully run the transmitter and receiver programs. After compiling the program you can run it by opening up two terminals, and running for example</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="nv">$ </span>./transmitter wlan0</code></pre></div>
+
+
+<p>in one terminal, and</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="nv">$ </span>./receiver wlan1</code></pre></div>
+
+
+<p>in the other. If you don’t have access to two wireless cards or you can’t be bothered to whip out another laptop or something you can also just run both programs using one adapter. This will however cause the receiver program to pick up and print all packets twice: once when it is broadcast and once when it is received.</p>
+
+<p>You can now enter text in the transmitter program and once you press enter, it will be sent. You can also cat a text file and pipe its output into the program, this will send the contents of that file line by line.</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="nv">$ </span>cat file.txt <span class="p">|</span> ./transmitter wlan1</code></pre></div>
+
+
+<p>Remember, not all packets might reach their destination and show up on the receiving side. There is no error checking involved. Also, the data is not encrypted. Anyone can just grab these packets out of the air. You could however implement these features yourself.</p>
+
+<p>There are obvious advantages and disadvantages to using this method. An advantage might be how a technique like this could be implemented on any device that is capable of scanning for wireless networks. A disadvantage is that this would be very hard to scale.</p>
+
+<p>As an example of what this can be used for, I created a program called <a href="http://rickvandeloo.com/2012/08/01/Beacontalk-peer-to-peer-chat-program-that-sends-data-over-Wi-Fi-without-associations/">beacontalk</a>. Beacontalk is a simple peer to peer chat-program that re-broadcasts all incoming messages. This means that if there are three nodes, and node A can reach node B, and B can reach C, but node A can not reach C, then the message will get passed along by B to still reach all the nodes in the network.</p>
+
+<p><a href="https://github.com/vdloo/Beacontalk">You can get the source for beacontalk on github.</a></p>
+
+	
+  </div>
+    <p>
+      <a href="/2012/08/01/Sending-data-over-Wi-Fi-without-associations/">Permalink</a>
+    </p>
+</div>
+<hr>
+
+
+
+<div class="row-fluid">
+  <div class="span12">
+    <h2><a href="/2012/08/01/Beacontalk-peer-to-peer-chat-program-that-sends-data-over-Wi-Fi-without-associations/">Beacontalk - Peer to peer chat-program that sends data over Wi-Fi without associations</a></h2>
+    <h4>01 August 2012</h4>
+	<h3>Beacontalk - Peer to peer chat-program that sends data over Wi-Fi without associations</h3>
+
+<p>Beacontalk is a peer to peer chat-program that uses a method of <a href="http://rickvandeloo.com/2012/08/01/Sending-data-over-Wi-Fi-without-associations/">sending data over Wi-Fi without associations</a>. This program enables the user to send text to other in-range wireless devices also running the program. All received messages that are unique, are re-broadcast. This means that if nodes are places in a straight line, the data will be sent through a chain of nodes. Be wary of that this program is merely a proof of concept and does not use any encryption. Anyone with a package-sniffer will be able to decipher your messages.</p>
+
+<p>To install the program</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="nv">$ </span>./configure<span class="p">;</span> make<span class="p">;</span> make install</code></pre></div>
+
+
+<p>Put your wireless card into monitor mode and pick a channel</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="nv">$ </span>ifconfig wlan0 down<span class="p">;</span> iwconfig wlan0 mode monitor<span class="p">;</span> iwconfig wlan0 channel 1<span class="p">;</span> ifconfig wlan0 up</code></pre></div>
+
+
+<p>Run the program by doing</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="nv">$ </span>./beacontalk wlan0</code></pre></div>
+
+
+<p><a href="https://github.com/vdloo/Beacontalk">Look at the source on github</a>, or <a href="https://github.com/vdloo/Beacontalk/zipball/master">download a tarball</a>.</p>
+
+	
+  </div>
+    <p>
+      <a href="/2012/08/01/Beacontalk-peer-to-peer-chat-program-that-sends-data-over-Wi-Fi-without-associations/">Permalink</a>
+    </p>
+</div>
+<hr>
+
+
+
+
+<div class="row-fluid">
+  <div class="span12">
+    <div class="pagination">
+      <ul>
+        
+          
+          <li><a href="/page2">Prev</a></li>
+          
+        
+        
+        <li><a href="/">1</a></li>
+        
+        
+          
+          <li><a href="/page2">2</a></li>
+          
+        
+          
+          <li><span class="active">3</span></li>
+          
+        
+          
+          <li><a href="/page4">4</a></li>
+          
+        
+        
+        <li><a href="/page4">Next</a></li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+
+
+  </div>
+  <div class="span4">
+    <div id="about"><h3>About me</h3></div>
+
+<p>
+Rick van de Loo, software developer in the Amsterdam area. I like devops, cloud, python and LISP.
+<br>
+<br>
+Find me on <a href="https://github.com/vdloo">Github</a> or <a href="mailto:rickvandeloo@gmail.com">drop me a line</a></p>
+<hr>
+
+<p>Other posts:</p>
+<ul>
+  
+    <li><a href="/2016/01/31/managing-dns-for-moving-devices-using-consul-and-cjdns/">Managing dns for moving devices with consul and cjdns</a></li>
+  
+    <li><a href="/2014/11/24/configuring-network-bridge-debian-jessie-static-address/">Configuring a network bridge on Debian 8.0 for static addresses</a></li>
+  
+    <li><a href="/2014/11/21/partially-synchronising-a-structured-folder-to-smaller-storage/">Partially synchronising a structured folder (on a Synology machine) to a smaller storage</a></li>
+  
+    <li><a href="/2014/07/03/fibonacci-in-finite-fields-in-racket/">Implementing Fibonacci in finite fields, in racket</a></li>
+  
+    <li><a href="/2014/07/02/why-I-am-starting-the-SICP-reading-project-this-summer/">The SICP reading project</a></li>
+  
+    <li><a href="/2014/01/13/Suspend-and-continue-processes-in-a-shell-script/">Suspend and continue processes (ctrl+z) in a shell script</a></li>
+  
+    <li><a href="/2013/09/21/Fixing-the-ds-audio-and-video-you-are-not-authorized-to-use-this-service-error/">Not authorized to use this service in DS Audio and Video</a></li>
+  
+    <li><a href="/2012/08/01/Sending-data-over-Wi-Fi-without-associations/">Sending data over Wi-Fi without associations</a></li>
+  
+    <li><a href="/2012/08/01/Beacontalk-peer-to-peer-chat-program-that-sends-data-over-Wi-Fi-without-associations/">Beacontalk - Peer to peer chat-program that sends data over Wi-Fi without associations</a></li>
+  
+    <li><a href="/2012/06/03/Playlist2XBMC/">Playlist2XBMC</a></li>
+  
+</ul>
+
+  </div>
+</div>
+</div>
+
+  </body>
+</html>
+

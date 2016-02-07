@@ -1,2 +1,2 @@
 #!/usr/bin/env sh
-jekyll build --pygments
+jekyll build highlighter

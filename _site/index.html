@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>rickvandeloo.com</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Homepage of Rick van de Loo">
+
+    <link href="/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+      body {
+        padding-top: 60px;
+      }
+    </style>
+    <link href="/css/bootstrap-responsive.min.css" rel="stylesheet">
+    <link href="/css/zenburn.css" rel="stylesheet">
+
+    <!-- HTML5 shim, for IE6-8 support of HTML5 elements -->
+    <!--[if lt IE 9]>
+      <script src="http://html5shim.googlecode.com/svn/trunk/html5.js"></sc\
+ript>
+    <![endif]-->
+  </head>
+
+  <body>
+
+    <div class="navbar navbar-inverse navbar-fixed-top">
+      <div class="navbar-inner">
+        <div class="container">
+          <a class="brand" href="/">rickvandeloo.com</a>
+            <ul class="nav">
+              <li class="active"><a href="/">Home</a></li>
+              <li class="btn-navbar active" style="padding: 0;"><a href="#about">About</a></li>
+            </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="container">
+
+<div class="row-fluid">
+  <div class="span8">
+    
+
+<div class="row-fluid">
+  <div class="span12">
+    <h2><a href="/2016/01/31/managing-dns-for-moving-devices-using-consul-and-cjdns/">Managing dns for moving devices with consul and cjdns</a></h2>
+    <h4>31 January 2016</h4>
+	<p>Over the past couple of years I've built up quite the collection of
+re-purposed old laptops and desktops slowly contributing to global warming
+from a stuffy closet at my parents' house and under the bed in my studio.
+I like to pretend that my total apathetic disregard for the rainforests
+comes from a place of utility but in practice it probably has to do more
+with my obsessive need for hoarding places to SSH into, something
+I attribute to playing too much Mega Man Battle Network in high-school.</p>
+
+<p>Nevertheless, I have some specific use cases I keep running into and it
+involves these make-shift servers and me not wanting to have to remember
+how to reach them from my laptop or phone when I move between my place, my
+parents' place or anywhere else in the world.</p>
+
+<p>Basically the situation is like this: if I have servers A and B in network
+1 and server C in network 2, of which only B and C are publicly
+accessible, and I move with my laptop between network 1 and 2 or even
+outside of both networks, then there will be different paths that can be
+used to access each server based on where the laptop is in relation to the
+networks of all other servers and these routes have to be reconfigured
+each time the laptop or any other node in the network changes it's
+relative position to any other nodes which is cumbersome and unnecessary.</p>
+
+<p>To illustrate how moving machines can be problematic because they require
+constant reconfiguration of the routes to other machines I present three
+cases. The first one has to do with how we get from a laptop to a not
+publicly accessible server in another network by hopping though one that
+is, the second one is about why using a reverse SSH tunnel is not the best
+solution when trying to access a server behind a firewall and the third
+one is why a regular VPN is not a panacea for moving machines because they
+introduce a single point of failure and don't give you <em>one</em> endpoint that
+can be reached from all nodes in a network if those nodes require an
+intermediate hop.</p>
+
+<p>Finally I will explain how to leverage mesh networking and distributed
+service discovery by setting up cjdns and consul so that as long as you
+can make at least one connection to a server that knows how to reach the
+destination you are trying to access you can just run</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash">λ ~ consul members   <span class="c"># on server_C which can not reach server_A directly</span>
+Node          Address                    Status  Type    Build  Protocol  DC
+server_A      <span class="o">[</span>2001:0db8:...:0001<span class="o">]</span>:8301  alive   server  0.6.0  <span class="m">2</span>         cjdns
+server_B      <span class="o">[</span>2001:0db8:...:0002<span class="o">]</span>:8301  alive   server  0.5.0  <span class="m">2</span>         cjdns
+server_C      <span class="o">[</span>2001:0db8:...:0003<span class="o">]</span>:8301  alive   server  0.6.3  <span class="m">2</span>         cjdns
+λ ~ SSH server_A.node.consul
+Last login: Sun Jan <span class="m">31</span> 17:46:51 <span class="m">2016</span> from 2001:0db8:...:0003</code></pre></div>
+
+
+<p>and let the software figure out the route for you.</p>
+
+<h2>Case 1. Relative proxying</h2>
+
+<p>This section demonstrates why there is no way to define static hosts in an
+SSH configuration that will allow us to reach all three servers from
+a laptop regardless of where it is in relation to the network of the
+destination server when there is at least one possible route to that
+machine. When I refer to the relation of the source machine to the network
+of the destination machine I'm talking about whether or not we can make
+a connection through a local network, a public network like the internet,
+or if we can reach the server directly at all.</p>
+
+<p>Depending on whether the laptop is in network 1, 2 or somewhere else,
+there are different paths that can be travelled to access each server. The
+paths differ according to in which network the laptop resides. The laptop
+can reach a server in the same network by using the internal network,
+a path that will not be available anymore when the laptop changes
+networks. But as long as there is at least one publicly accessible server
+in each network all servers can be reached from anywhere using the same
+route.</p>
+
+<p>For example, if the laptop is in network 1, it could reach both server
+A and server B through the internal network but it would have to go over
+the internet to reach C. In order to be able to access all servers from
+the laptop when the laptop is in network 1 these SSH config rules could be
+defined.</p>
+
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="n">Host</span> <span class="n">server_A</span>
+    <span class="n">HostName</span> <span class="mf">192.168</span><span class="o">.</span><span class="mf">1.2</span>    <span class="c"># server A in network 1</span>
+
+<span class="n">Host</span> <span class="n">server_B</span>
+    <span class="n">HostName</span> <span class="mf">192.168</span><span class="o">.</span><span class="mf">1.3</span>    <span class="c"># server B in network 1</span>
+
+<span class="n">Host</span> <span class="n">server_C</span>
+    <span class="n">HostName</span> <span class="n">c</span><span class="o">.</span><span class="n">example</span><span class="o">.</span><span class="n">com</span>  <span class="c"># server C in network 2</span></code></pre></div>
+
+
+<p>The connections to all servers would then look like this</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash">.<span class="o">========</span>.   .<span class="o">===</span>.
+<span class="p">|</span> laptop <span class="p">|</span>-&gt;-<span class="p">|</span> a <span class="p">|</span>
+<span class="s1">&#39;========&#39;</span>   <span class="s1">&#39;===&#39;</span>
+.<span class="o">========</span>.   .<span class="o">===</span>.
+<span class="p">|</span> laptop <span class="p">|</span>-&gt;-<span class="p">|</span> b <span class="p">|</span>
+<span class="s1">&#39;========&#39;</span>   <span class="s1">&#39;===&#39;</span>
+.<span class="o">========</span>.   .----------.   .<span class="o">===</span>.
+<span class="p">|</span> laptop <span class="p">|</span>-&gt;-<span class="p">|</span> internet <span class="p">|</span>-&gt;-<span class="p">|</span> c <span class="p">|</span>
+<span class="s1">&#39;========&#39;</span>   <span class="s1">&#39;----------&#39;</span>   <span class="s1">&#39;===&#39;</span></code></pre></div>
+
+
+<p>But because server B is publicly accessible the laptop could also reach it
+over the internet in the same way server C is accessed even though server
+B and the laptop reside in the same network.</p>
+
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="n">Host</span> <span class="n">server_B</span>
+    <span class="n">HostName</span> <span class="n">b</span><span class="o">.</span><span class="n">example</span><span class="o">.</span><span class="n">com</span>  <span class="c"># server B in network 1</span></code></pre></div>
+
+
+<p>Connecting to B would then work like this</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash">.<span class="o">========</span>.   .----------.   .<span class="o">===</span>.
+<span class="p">|</span> laptop <span class="p">|</span>-&gt;-<span class="p">|</span> internet <span class="p">|</span>-&gt;-<span class="p">|</span> b <span class="p">|</span>
+<span class="s1">&#39;========&#39;</span>   <span class="s1">&#39;----------&#39;</span>   <span class="s1">&#39;===&#39;</span></code></pre></div>
+
+
+<p>With this configuration server B and C are all set to be accessible even
+when we move the laptop to network 2 or even outside 1 and 2 (say a public
+access point). If we also want to be able to reach server A from anywhere
+outside of network 1, we need to define it in terms of server B. We can do
+this by using server B as a proxy. If we can access server B, and server
+B can access server A, then we can reach A which is not publicly
+accessible from outside the network by going through B which <em>is</em> publicly
+accessible.</p>
+
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="n">Host</span> <span class="n">server_A</span>
+    <span class="n">HostName</span> <span class="mf">192.168</span><span class="o">.</span><span class="mf">1.2</span>    <span class="c"># server A in network 1</span>
+    <span class="n">ProxyCommand</span> <span class="n">SSH</span> <span class="o">-</span><span class="n">W</span> <span class="o">%</span><span class="n">h</span><span class="p">:</span><span class="o">%</span><span class="n">p</span> <span class="n">server_B</span></code></pre></div>
+
+
+<p>We go through the internet to get to server B, and then we go from server
+B to get to server A.</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash">.<span class="o">========</span>.   .----------.   .<span class="o">===</span>.   .<span class="o">===</span>.
+<span class="p">|</span> laptop <span class="p">|</span>-&gt;-<span class="p">|</span> internet <span class="p">|</span>-&gt;-<span class="p">|</span> b <span class="p">|</span>-&gt;-<span class="p">|</span> a <span class="p">|</span>
+<span class="s1">&#39;========&#39;</span>   <span class="s1">&#39;----------&#39;</span>   <span class="s1">&#39;===&#39;</span>   <span class="s1">&#39;===&#39;</span></code></pre></div>
+
+
+<p>When the laptop is not in network 1, going through B which can be accessed
+externally is the only path we have to server A. But if we are in network
+1, we could not only access server A like that but we could also reach it
+through the internal network directly, or even go through the internal
+network to server B and connect to server A from there.</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash">.<span class="o">========</span>.   .<span class="o">===</span>.
+<span class="p">|</span> laptop <span class="p">|</span>-&gt;-<span class="p">|</span> a <span class="p">|</span>
+<span class="s1">&#39;========&#39;</span>   <span class="s1">&#39;===&#39;</span>
+.<span class="o">========</span>.   .<span class="o">===</span>.   .<span class="o">===</span>.
+<span class="p">|</span> laptop <span class="p">|</span>-&gt;-<span class="p">|</span> b <span class="p">|</span>-&gt;-<span class="p">|</span> a <span class="p">|</span>
+<span class="s1">&#39;========&#39;</span>   <span class="s1">&#39;===&#39;</span>   <span class="s1">&#39;===&#39;</span></code></pre></div>
+
+
+<p>This is where we encounter the situation where the SSH configuration does
+not work anymore while there still is a path to the destination machine
+from the position of the laptop. If network 1 experiences an internet
+outage, or if the DNS to server B changes, or if server B goes offline,
+server A and B won't be accessible anymore using the static SSH rules even
+when the laptop is in the same network. If we can't access B over the
+internet anymore, we have to manually update our SSH configuration back to
+the specific internal addresses in order to get to A even though nothing
+happened to A.</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash">.<span class="o">========</span>.   .----------.   .<span class="o">===</span>.   .<span class="o">===</span>.
+<span class="p">|</span> laptop <span class="p">|</span>-&gt;-<span class="p">|</span> internet <span class="p">|</span>-/-<span class="p">|</span> b <span class="p">|</span>-&gt;-<span class="p">|</span> a <span class="p">|</span>
+<span class="s1">&#39;========&#39;</span>   <span class="s1">&#39;----------&#39;</span>   <span class="s1">&#39;===&#39;</span>   <span class="s1">&#39;===&#39;</span></code></pre></div>
+
+
+<p>We can still get to A by using the internal network.</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash">.<span class="o">========</span>.   .<span class="o">===</span>.
+<span class="p">|</span> laptop <span class="p">|</span>-&gt;-<span class="p">|</span> a <span class="p">|</span>
+<span class="s1">&#39;========&#39;</span>   <span class="s1">&#39;===&#39;</span></code></pre></div>
+
+
+<p>We are forced to alter the SSH config rules back to the internal
+configuration, which we don't want to do because as soon as the laptop
+leaves network 1 we still won't be able to reach server B or A once the
+outage is resolved or the DNS is fixed without changing the SSH config
+rules again.</p>
+
+<p>So when we move outside of network 1 with our updated SSH configuration,
+server A won't be accessible anymore because it now connects directly to
+the internal address.</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash">.<span class="o">========</span>.   .<span class="o">===</span>.
+<span class="p">|</span> laptop <span class="p">|</span>-/-<span class="p">|</span> a <span class="p">|</span>
+<span class="s1">&#39;========&#39;</span>   <span class="s1">&#39;===&#39;</span></code></pre></div>
+
+
+<p><br></p>
+
+<h2>Case 2. Impracticalities of reverse tunneling</h2>
+
+<p>I've been entertaining the idea of running some services on the Linux
+chroot on my phone for a while now but there are some obvious
+impracticalities that come to mind. One of the major ones is that even
+SSH-ing into the device can be a chore because I don't want to bind the
+SSH server on rmnet0 (the 3G interface) which means that the device is not
+always publicly accessible over the internet even when there <em>is</em> an
+outbound connnection. Additionally, because the device is always on the
+move, there is also no way to ensure forwarding to the wlan interface on
+the router level because most of the times you simply don't have the power
+to change those settings.</p>
+
+<p>Regardless of internet connectivity, how to access the same phone from the
+same laptop through an internal network will change based on where you
+are. In my particular situation setting a static address on the phone is
+not a solution because I configured different subnets in my two wifi
+networks to some avoid unrelated VPN collision issues, so the internal IP
+addresses can't even be the same across networks. Point being: you can't
+assume that you can retain an internal IP address when you change
+networks.</p>
+
+<p>So if a device is not publicly accessible and there also are no other
+publicly accessible nodes in the network that we can use to bounce
+through, either because they don't exist or because the IP addresses in
+the internal network are subject to change, then we need to resort to
+reverse tunneling in order to set up an SSH connection from the outside.</p>
+
+<p>A reverse SSH tunnel is exactly what it sounds like: you take a port from
+the source host and bind that on an interface on the destination host.
+That forwarded port on the destination host can now be used to access the
+port on the source. You can do this from behind a firewall because we are
+only using outbound traffic.</p>
+
+<p>The following command establishes a persistent reverse SSH tunnel from the
+moving device to server B. The -g flag allows for remote hosts to access
+the forwarded port, if we omit that only local connections will be
+forwarded.</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash">autoSSH -M <span class="m">0</span> -N -R 9922:localhost:22 server_B</code></pre></div>
+
+
+<p>Server A could now access the phone like this.</p>
+
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="n">Host</span> <span class="n">phone</span>
+    <span class="n">HostName</span> <span class="mf">192.168</span><span class="o">.</span><span class="mf">1.3</span>    <span class="c"># server B in network 1</span>
+    <span class="n">Port</span> <span class="mi">9922</span></code></pre></div>
+
+
+<p>Sever A connects to server B where the phone has forwarded its SSH port
+to.</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash">.<span class="o">===</span>.   .<span class="o">===</span>.   .----------.   .<span class="o">=======</span>. 
+<span class="p">|</span> a <span class="p">|</span>-&gt;-<span class="p">|</span> b <span class="p">|</span>-&lt;-<span class="p">|</span> internet <span class="p">|</span>-&lt;-<span class="p">|</span> phone <span class="p">|</span>
+<span class="s1">&#39;===&#39;</span>   <span class="s1">&#39;===&#39;</span>   <span class="s1">&#39;----------&#39;</span>   <span class="s1">&#39;=======&#39;</span></code></pre></div>
+
+
+<p>But what if server C in network 2 wants to access the phone? It would
+first need to hop to server B in network 1 and then SSH to the laptop in
+the third network, which is very clunky.</p>
+
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="n">Host</span> <span class="n">server_B</span>
+    <span class="n">HostName</span> <span class="n">b</span><span class="o">.</span><span class="n">example</span><span class="o">.</span><span class="n">com</span>  <span class="c"># server B in network 1</span>
+
+<span class="n">Host</span> <span class="n">phone</span>
+    <span class="n">HostName</span> <span class="n">localhost</span>
+    <span class="n">Port</span> <span class="mi">9922</span>
+    <span class="n">ProxyCommand</span> <span class="n">SSH</span> <span class="o">-</span><span class="n">W</span> <span class="o">%</span><span class="n">h</span><span class="p">:</span><span class="o">%</span><span class="n">p</span> <span class="n">server_B</span></code></pre></div>
+
+
+<p>Server C now needs to go through the internet to get to server B, after
+which we will go through the internet again to get to the phone.</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash">.<span class="o">===</span>.   .----------.   .<span class="o">===</span>.   .----------.   .<span class="o">=======</span>. 
+<span class="p">|</span> c <span class="p">|</span>-&gt;-<span class="p">|</span> internet <span class="p">|</span>-&gt;-<span class="p">|</span> b <span class="p">|</span>-&lt;-<span class="p">|</span> internet <span class="p">|</span>-&lt;-<span class="p">|</span> phone <span class="p">|</span>
+<span class="s1">&#39;===&#39;</span>   <span class="s1">&#39;----------&#39;</span>   <span class="s1">&#39;===&#39;</span>   <span class="s1">&#39;----------&#39;</span>   <span class="s1">&#39;=======&#39;</span></code></pre></div>
+
+
+<p>This is a problem because now we are bound by the network limits of server
+B. If server C and the phone have a better network connection than server
+B then we are wasting time by transferring it all through B.</p>
+
+<p>Another issue is that when server B goes offline, server C might still be
+publicly accessible. If that happens, there is still one publicly
+available endpoint that can be used to forward the SSH port to, so there
+is still a possible connection that can be made from the phone to make
+it's SSH server accessible. However binding the port to server C instead
+of B would cause the exact same issue from the perspective of the other
+side.</p>
+
+<p>So should we preventively set up tunnels to all of our public servers in
+all networks? For the amount of nodes in this example that might be
+feasible, but if the network grows the complexity will increase and we
+will end up with a Cartesian product. Furthermore, if we did set up
+a tunnel to all nodes in the network, we'd still have to pick the address
+to use in the SSH configuration of all other nodes, which results in the
+same problems from case 1.</p>
+
+<h2>Case 3. A single point of failure</h2>
+
+<p>Most of the issues from the previous cases stem from the difference
+between how we can get from one point to the other based on where those
+points are in relation to each other. The majority of those problems could
+be solved if we had a way to make all nodes perceive all others as if they
+were in the same network. A traditional virtual private network can do
+just that.</p>
+
+<p>All nodes would be able to reach all other nodes as if they were in the
+same network and that would make defining a static SSH config pretty
+straightforward.</p>
+
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="n">Host</span> <span class="n">server_A</span>
+    <span class="n">HostName</span> <span class="mf">10.0</span><span class="o">.</span><span class="mf">0.1</span>       <span class="c"># server A in network 1</span>
+
+<span class="n">Host</span> <span class="n">server_B</span>
+    <span class="n">HostName</span> <span class="mf">10.0</span><span class="o">.</span><span class="mf">0.2</span>       <span class="c"># server B in network 1</span>
+
+<span class="n">Host</span> <span class="n">server_C</span>
+    <span class="n">HostName</span> <span class="mf">10.0</span><span class="o">.</span><span class="mf">0.3</span>       <span class="c"># server C in network 2</span></code></pre></div>
+
+
+<p>But looking more closely we see that this just moves the problem and
+doesn't really solve anything. We'd still have to have one publicly
+accessible VPN server that all nodes can access. If that server goes down
+or becomes unreachable, the virtual network would go down as well, making
+it a single point of failure. That specific scenario could somewhat be
+remedied by some sort of automatic failover mechanism but that brings all
+the issues from case 2 back around because you would still have situations
+where you can't reach the same address from all devices.</p>
+
+<p>One of the scenarios that we haven't discussed yet is that of what happens
+when one of the servers thats could previously access another publicly
+accessible server in another network stops being able to make outbound
+connections over the internet but can still access other servers
+internally.</p>
+
+<p>If we run the VPN on publicly accessible server C, and server A can reach
+server B, but server A can't reach the internet anymore, we'd have to
+reconfigure the route to the VPN from server A by making it go through B.
+This is similar to server C having to go through B in order to get to
+A instead of directly connecting to publicly inaccessible server A as
+described in one of the previous examples but the difference is that now
+we can solve it with a conventional port forward.</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash">.<span class="o">===</span>.   .----------.
+<span class="p">|</span> a <span class="p">|</span>-/-<span class="p">|</span> internet <span class="p">|</span>
+<span class="s1">&#39;===&#39;</span>   <span class="s1">&#39;----------&#39;</span>
+.<span class="o">===</span>.   .<span class="o">===</span>.   .----------.   .<span class="o">===</span>. 
+<span class="p">|</span> a <span class="p">|</span>-&gt;-<span class="p">|</span> b <span class="p">|</span>-&gt;-<span class="p">|</span> internet <span class="p">|</span>-&gt;-<span class="p">|</span> c <span class="p">|</span>
+<span class="s1">&#39;===&#39;</span>   <span class="s1">&#39;===&#39;</span>   <span class="s1">&#39;----------&#39;</span>   <span class="s1">&#39;===&#39;</span></code></pre></div>
+
+
+<p>We can forward the VPN port on server C to server B so that A can access
+it and all nodes can appear as if they were in the same network again even
+though they can't all reach the VPN server directly.</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash">autoSSH -M <span class="m">0</span> -N -L 9194:localhost:1194 server_C -g</code></pre></div>
+
+
+<p>But this results in the same problems as we've seen before. What happens
+if this scenario presents itself in other zones as well? Do we make all
+nodes forward the VPN port to itself so that we can reach the VPN from
+wherever we are by just using the nearest tunnel? There would still be no
+<em>one</em> address or forwarded port that could be defined for the VPN that can
+be accessed from all nodes that have at least one possible route that they
+could take.</p>
+
+<h2>Solution: a mesh overlay network</h2>
+
+<p>It appears that what would really solve this problem is a decentralized
+way to set up something that resembles a virtual private network. All
+nodes would have to be able to connect to the network directly by
+connecting to a node that is connected to the network already and that way
+no manual hops would be required because that would all be abstracted away
+to the networking layer. This would allow us to reach to all connected
+nodes in the network using the same address without worrying about where
+they are in relation to each other.</p>
+
+<p>Luckily something exactly like that exists.
+<a href="https://github.com/cjdelisle/cjdns">Cjdns</a> is a project that originated
+from the <a href="reddit.com/r/darknetplan">/r/darknetplan</a> subreddit, the idea is
+that it provides an encrypted IPv6 network that uses distributed hash
+tables for routing with the goal of establishing a decentralized network
+that provides unintrusive and ubiquitous security.  In simpler terms: it
+enables you to run some cables to your neighbors and set up your own
+internet without using centralized authorities. Even though your left and
+right neighbor won't be able to connect to each other directly (because
+they have to go through you), it will appear as if they can because the
+routing protocol will figure out the path for you.</p>
+
+<p>Cjdns is different from similar projects like I2P and Tor because the goal
+is not anonymity but secure and refractorized networking. The biggest
+advantage for this use-case is that cjdns operates on level 3 of the
+networking stack. Contrary to I2P, you don't have to adapt your
+application to work with the protocol. Cjdns simply gives you an IPv6
+interface and takes care of the rest, this means that any application that
+supports IPv6 can run on top of cjdns.</p>
+
+<p>If we get cjdns set up, we could define one static SSH configuration that
+will work in all situations as long as there is at least one route to the
+destination you are trying to reach. We don't need to worry about the hops
+anymore because cjdns will take care of this.</p>
+
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="n">Host</span> <span class="n">server_A</span>
+    <span class="c"># cjdns IPv6 address of server A</span>
+    <span class="n">HostName</span> <span class="mi">2001</span><span class="p">:</span><span class="mi">0</span><span class="n">db8</span><span class="p">:</span><span class="o">...</span><span class="p">:</span><span class="mo">0001</span>  
+
+<span class="n">Host</span> <span class="n">server_B</span>
+    <span class="c"># cjdns IPv6 address of server B</span>
+    <span class="n">HostName</span> <span class="mi">2001</span><span class="p">:</span><span class="mi">0</span><span class="n">db8</span><span class="p">:</span><span class="o">...</span><span class="p">:</span><span class="mo">0002</span>  
+
+<span class="n">Host</span> <span class="n">server_C</span>
+    <span class="c"># cjdns IPv6 address of server C</span>
+    <span class="n">HostName</span> <span class="mi">2001</span><span class="p">:</span><span class="mi">0</span><span class="n">db8</span><span class="p">:</span><span class="o">...</span><span class="p">:</span><span class="mo">0003</span></code></pre></div>
+
+
+<p>This solves the problems described in the three cases but it depends on
+one condition: all nodes would have to have to be peered to all other
+nodes if we want to have complete decentralization. That way when the
+laptop moves from network 1 to network 2 it will not matter that it loses
+the internal route to the servers in network 1 because it will gain
+internal routes to all servers in network 2. The public routes will still
+exist but if they go down (like for example if the network you are in
+loses internet connectivity) you will still be able to make connections
+through the routes that exist in the local network because you are peered
+internally as well.</p>
+
+<p>Cjdns also offers a public network that you can connect to. This could be
+an option to consider if you don't want to maintain your own publicly
+accessible endpoints. There are still points of failures using cjdns
+across zones but now they are limited to the amount of nodes in a network
+that can reach a peer that can be accessed by other machines in other
+networks. The public network is called Hyperboria. Hyperboria is pretty
+<a href="http://www.fc00.org/">impressive</a> and it is certainly a beacon of hope in
+the current declining free internet of walled gardens and <a href="http://boingboing.net/2012/01/10/lockdown.html">The War On
+General Purpose
+Computing</a>, but for my use
+case I decided to roll my own private cjdns network, partially because
+I do not feel comfortable relaying other people's possibly illicit traffic
+through my internet connections but also because for my sporadic tinkering
+I didn't feel like it was worth it yet to lock down the security on my
+personal servers with strict firewalls to make them secure enough to use
+in a public IPv6 network.</p>
+
+<h2>Adding DNS into the mix</h2>
+
+<p>Now that we have IPv6 addresses that can be used to access any device in
+the network as long as there is at least one route available to that
+device, either directly or through one or more other machines, it would be
+nice if we could assign a human-friendly address to it.</p>
+
+<p>As long as we stick to only using this setup for SSH  this isn't a very
+important consideration because it doesn't really matter if you define an
+IP address or a domain name as hostname in the configuration because after
+doing it once you can forget about it. But we could take it one step
+further if we wanted to use this configuration for more than just remote
+access to moving devices over SSH. We could now also access other services
+on all nodes from anywhere as long as there is at least one route that can
+be taken and the service is bound to the tun0 interface.</p>
+
+<p>The crazy scientist in me gets really excited by the idea of running
+a web-server on a mobile phone in my pocket, which would be a stupid idea
+for many reasons but a great idea for many others, especially if there was
+a way to combine it with some form of distributed load-balancing. For now
+let's focus on a situation where we want to host and access a service on
+one of the nodes in the network and that service needs to be accessible
+from all other connected nodes using a specific domain name.</p>
+
+<p>We could probably do something with dynamic DNS now that all the nodes are
+in the same (virtual) network, but since we got this far without
+introducing any centralized dependencies it would be nice if we also could
+set up hostname resolution with this constraint as well. The first thing
+that comes to mind is <a href="https://namecoin.info/">Namecoin</a>, but for this
+particular use-case there is a possibly more fitting solution: <a href="https://www.consul.io/">consul by
+Hashicorp</a>.</p>
+
+<p>Consul offers a query interface for DNS. You can post new entries to its
+API or define them in configuration files that are read by the agent.
+These entries will then be propagated to all other nodes in the quorum.
+Because consul provides a DNS server on the localhost of each node that
+runs the agent, you can just set up a dnsmasq rule that points to consul's
+DNS port (8600 by default) and that will be enough to give you access to
+the *.consul domain.</p>
+
+<p>Out of the box all active nodes will be available on the *.nodes.consul
+subdomain. If one of your hosts is named <em>server_A</em> all nodes in the
+consul cluster will be able to reach it on <em>server_a.node.consul</em> as
+long as they have the dnsmasq configured.</p>
+
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="err">$</span> <span class="n">echo</span> <span class="s">&quot;server=/consul./127.0.0.1#8600&quot;</span> <span class="o">&gt;</span> <span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">dnsmasq</span><span class="o">.</span><span class="n">d</span><span class="o">/</span><span class="mi">10</span><span class="o">-</span><span class="n">consul</span></code></pre></div>
+
+
+<p>The advantage consul has over Namecoin for this particular situation is
+that it is trivial to completely self-host it and it doesn't involve
+a public blockchain. There is one big downside to using consul though, and
+that is that because it uses the <a href="https://en.wikipedia.org/wiki/Raft_(computer_science)">Raft consensus
+algorithm</a> it
+requires at least three active servers to form a quorum. If there are less
+than three nodes, consul can't perform the leader election procedure and
+there is no way to reliably distribute the information throughout the
+cluster.</p>
+
+<p>Once consul is set up you could perform a dig the domain on all nodes and this is
+what you would see:</p>
+
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="err">$</span> <span class="n">dig</span> <span class="n">server_a</span><span class="o">.</span><span class="n">node</span><span class="o">.</span><span class="n">consul</span> <span class="n">ANY</span>
+
+<span class="p">;</span> <span class="o">&lt;&lt;&gt;&gt;</span> <span class="n">DiG</span> <span class="mf">9.9</span><span class="o">.</span><span class="mi">5</span><span class="o">-</span><span class="mi">9</span><span class="o">+</span><span class="n">deb8u5</span><span class="o">-</span><span class="n">Debian</span> <span class="o">&lt;&lt;&gt;&gt;</span> <span class="n">server_a</span><span class="o">.</span><span class="n">node</span><span class="o">.</span><span class="n">consul</span> <span class="n">ANY</span>
+<span class="p">;;</span> <span class="k">global</span> <span class="n">options</span><span class="p">:</span> <span class="o">+</span><span class="n">cmd</span>
+<span class="p">;;</span> <span class="n">Got</span> <span class="n">answer</span><span class="p">:</span>
+<span class="p">;;</span> <span class="o">-&gt;&gt;</span><span class="n">HEADER</span><span class="o">&lt;&lt;-</span> <span class="n">opcode</span><span class="p">:</span> <span class="n">QUERY</span><span class="p">,</span> <span class="n">status</span><span class="p">:</span> <span class="n">NOERROR</span><span class="p">,</span> <span class="nb">id</span><span class="p">:</span> <span class="mi">18639</span>
+<span class="p">;;</span> <span class="n">flags</span><span class="p">:</span> <span class="n">qr</span> <span class="n">aa</span> <span class="n">rd</span> <span class="n">ra</span><span class="p">;</span> <span class="n">QUERY</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="n">ANSWER</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="n">AUTHORITY</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="n">ADDITIONAL</span><span class="p">:</span> <span class="mi">0</span>
+
+<span class="p">;;</span> <span class="n">QUESTION</span> <span class="n">SECTION</span><span class="p">:</span>
+<span class="p">;</span><span class="n">server_a</span><span class="o">.</span><span class="n">node</span><span class="o">.</span><span class="n">consul</span><span class="o">.</span>      <span class="n">IN</span>      <span class="n">ANY</span>
+
+<span class="p">;;</span> <span class="n">ANSWER</span> <span class="n">SECTION</span><span class="p">:</span>
+<span class="n">server_a</span><span class="o">.</span><span class="n">node</span><span class="o">.</span><span class="n">consul</span><span class="o">.</span> <span class="mi">0</span>     <span class="n">IN</span>      <span class="n">AAAA</span>
+<span class="mi">2001</span><span class="p">:</span><span class="mi">0</span><span class="n">db8</span><span class="p">:</span><span class="o">...</span><span class="p">:</span><span class="mo">0001</span>
+
+<span class="p">;;</span> <span class="n">Query</span> <span class="n">time</span><span class="p">:</span> <span class="mi">81</span> <span class="n">msec</span>
+<span class="p">;;</span> <span class="n">SERVER</span><span class="p">:</span> <span class="mf">127.0</span><span class="o">.</span><span class="mf">0.1</span><span class="c">#53(127.0.0.1)</span>
+<span class="p">;;</span> <span class="n">WHEN</span><span class="p">:</span> <span class="n">Sun</span> <span class="n">Feb</span> <span class="mo">07</span> <span class="mi">19</span><span class="p">:</span><span class="mi">44</span><span class="p">:</span><span class="mi">34</span> <span class="n">CET</span> <span class="mi">2016</span>
+<span class="p">;;</span> <span class="n">MSG</span> <span class="n">SIZE</span>  <span class="n">rcvd</span><span class="p">:</span> <span class="mi">94</span></code></pre></div>
+
+
+<h2>Next time: bringing it all to life</h2>
+
+<p>So far I only discussed the theoretical aspects of this contraption,
+unfortunately this post ended up a lot longer than I expected so for now
+I'm going to cut it short. Tune in soon for part two of this post where
+I'll describe step by step how to get this all set up. If you want to give
+it a try yourself (this really isn't rocket science), check out the
+repositories for <a href="https://github.com/cjdelisle/cjdns">cjdns</a> and
+<a href="https://github.com/hashicorp/consul">consul</a> on github. Getting cjdns up
+and running is a piece of cake and the
+<a href="https://www.consul.io/intro/">documentation</a> for consul is really good so
+if you want to give it a try on your own you should be able to figure it
+out.</p>
+
+	
+  </div>
+    <p>
+      <a href="/2016/01/31/managing-dns-for-moving-devices-using-consul-and-cjdns/">Permalink</a>
+    </p>
+</div>
+<hr>
+
+
+
+<div class="row-fluid">
+  <div class="span12">
+    <h2><a href="/2014/11/24/configuring-network-bridge-debian-jessie-static-address/">Configuring a network bridge on Debian 8.0 for static addresses</a></h2>
+    <h4>24 November 2014</h4>
+	<p>Setting up bridge-utils to work correctly is something I only have to do
+once every so often. It is one of those things where you end up chasing
+the same rabbit hole of documentation over and over again in order to get
+it to work whilst banging your against the wall. The reason why bridged
+networking can end up being so frustrating isn’t because it is difficult
+(it’s actually pretty straight forward) but because if you mess up, it
+could mean a nice trip down to where you parked the hardware. I mostly use
+network bridging on physical machines in order <a href="http://wiki.qemu.org/Documentation/Networking">to connect qemu machines
+to the internet</a> using
+<a href="http://en.wikipedia.org/wiki/TUN/TAP">TUN/TAP</a>.</p>
+
+<p>Messing up a bridge-utils configuration has resulted in me borking
+networking on remote and headless machines more than once now. To prevent
+myself (and maybe you) some future headaches and lock-outs, this is how to
+configure a bridge by the name of br0 with static IPs for interfaces eth0
+and tap0 on a fresh install of Debian 8.0 jessie/sid.</p>
+
+<p>Firstly make sure bridge-utils is on the system</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="c"># apt-get install bridge-utils</span></code></pre></div>
+
+
+<p>Then put something like this based on your network preferences in
+/etc/network/interfaces.
+I recommend commenting out the original configuration lines instead of
+deleting them.</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash">iface lo inet loopback
+
+allow-hotplug eth0
+iface eth0 inet static
+        address 192.168.1.155   <span class="c">#eth0 ip</span>
+        netmask 255.255.255.0
+        gateway 192.168.1.1
+
+allow-hotplug tap0
+iface tap0 inet static
+        address 192.168.1.4 <span class="c">#tap0 ip</span>
+        netmask 255.255.255.0
+        gateway 192.168.1.1
+
+auto br0
+iface br0 inet static
+        address 192.168.1.2 <span class="c">#bridge ip</span>
+        netmask 255.255.255.0
+        broadcast 192.168.1.255
+        gateway 192.168.1.1
+        bridge_ports eth0 tap0
+        bridge_fd 9
+        bridge_hello 2
+        bridge_maxage 12
+        bridge_stp off</code></pre></div>
+
+
+<p>The next step is unbinding all ipv4 addresses from the eth0 interface and
+restarting networking through systemd.</p>
+
+<p>WARNING: this is the point of no return, there is a good chance you are
+going to lock yourself out of the box. If you have no way of getting
+a shell other than through the network, think twice before proceeding.
+I take no responsibility of you break something. More information
+<a href="http://www.tldp.org/HOWTO/Ethernet-Bridge-netfilter-HOWTO-3.html">here</a>.</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="c"># ifconfig eth0 0.0.0.0 down; systemctl restart networking</span></code></pre></div>
+
+
+<p>Or the non systemd way:</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="c"># ifconfig eth0 0.0.0.0 down; service networking restart</span></code></pre></div>
+
+
+
+
+	
+  </div>
+    <p>
+      <a href="/2014/11/24/configuring-network-bridge-debian-jessie-static-address/">Permalink</a>
+    </p>
+</div>
+<hr>
+
+
+
+<div class="row-fluid">
+  <div class="span12">
+    <h2><a href="/2014/11/21/partially-synchronising-a-structured-folder-to-smaller-storage/">Partially synchronising a structured folder (on a Synology machine) to a smaller storage</a></h2>
+    <h4>21 November 2014</h4>
+	<p>One of the most enjoyable things writing code has to offer is automating
+tasks to the point where you can completely forget about them. There is
+nothing like walking down the street and getting an email on your phone
+from some long forgotten process, reminding you that something happened
+and thinking “I can’t remember how that works but I built that”. Recently
+I’ve been dusting off and cleaning up some of my personal scripts to
+publish up on <a href="https://github.com/vdloo">my GitHub account</a> and in the
+process I stumbled upon a problem I solved a long time ago which on
+initial glance seemed really simple but ended up being rather treacherous.</p>
+
+<p>The situation is as follows: imagine a Synology server storing a video
+library where files are stored with a certain directory structure. This
+structure is important because Kodi (previously XBMC) requires <a href="http://kodi.wiki/view/Naming_video_files/TV_shows">specific
+naming conventions</a> in
+order to succesfully index TV shows in its library.</p>
+
+<p>Now imagine that you move out to go to college and scramble together
+a small machine to use as a HTPC. The cpu is fine, the gpu is fine, but
+the storage capacity is not nearly as much as you’ve grown accustomed to.
+You can’t mount the server at home as remote storage because your Austrian
+roommate will forever nag you about the traffic messing up his Dota game
+and the connection isn’t fast enough to stream anyway. So what do you do?</p>
+
+<p>I figured that the most logical solution was to just rsync all the files
+in the directory to the local machine until the volume was full, starting
+with file that was modified last. Seems easy right? How about something
+with</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash">find . -type f -printf <span class="s1">&#39;%T@ %p\n&#39;</span></code></pre></div>
+
+
+<p>Just pipe that into sort and xargs to rsync the files individually to the
+HTPC until the volume is full. Unfortunately its not that simple. Synology
+machines are equipped with Busybox binaries instead of proper GNU
+utilities. This means that there is no -printf flag on the find or the
+xargs command, the stat command is severely limited and the default shell
+is <a href="http://en.wikipedia.org/wiki/Almquist_shell">Almquist shell</a>. This
+limits the options and convenience quite a bit. Some fancy glob shelling
+trick won’t be possible too. A savage option would be to pipe something
+from ls, but even that was off the table due to the not functioning ‘-e
+List full date and time’  flag of the BusyBox implementation. A compromise
+could be made where the ‘-mtime’ find flag could be used to simply get all
+the files not older than a certain amount of time but I didn’t like the
+idea of having the hdd just sitting there idely until new files came by.</p>
+
+<p>The next step could be to look into options like utilizing the <a href="http://www.mdevries.org/synology_debian_chroot.html">Debian
+chroot</a> or to find
+some other way to get better binaries on the system. None of that seems
+like the ‘clean’ way to do it but luckily there is another route to go.</p>
+
+<p>My solution consists of two scripts. <a href="https://github.com/vdloo/dotfiles/blob/master/code/scripts/system/latestfilter.py">One Python script that runs on the
+Synology
+server</a>
+to list all the files in the source directory and to create symlinks to
+the latest files in a temporary directory until a certain amount of bytes
+of data is reached. <a href="https://github.com/vdloo/dotfiles/blob/master/code/scripts/system/latestsync.sh">The second
+script</a>
+is a small shell script that runs on the remote machine.</p>
+
+<p>This way every time the latestsync.sh script is run on the small server,
+a directory is made on the large server, the dir is filled up with
+symlinks to files sorted by age in a copy of the original directory
+structure from the specified path until this new temporary directory has
+reached the allocated amount of bytes specified in the script. Then rsync
+on the smaller server will start pulling everything from that directory
+down to the local volume.</p>
+
+<p>To set it up drop the latestfilter.py script somewhere on the remote
+server like for example</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash">wget https://raw.githubusercontent.com/vdloo/dotfiles/master/code/scripts/system/latestfilter.py -P /volume1/RAID5/other/code/scripts/system</code></pre></div>
+
+
+<p>On the local server download the latestsync.sh script to some directory</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash">wget https://raw.githubusercontent.com/vdloo/dotfiles/master/code/scripts/system/latestsync.sh -P ~/.dotfiles-public/code/scripts/system/</code></pre></div>
+
+
+<p>And run the script once in a while using a cron job like this based on
+your configuration</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash">*       7,12,17,22      *       *       *       <span class="nv">SHELL</span><span class="o">=</span>/bin/bash <span class="nv">PATH</span><span class="o">=</span>/bin:/sbin:/usr/bin:/usr/sbin bash /home/vdloo/.dotfiles-public/code/scripts/system/latestsync.sh -h example.com -u vdloo -p <span class="m">22</span> -a <span class="m">1500000000000</span> -l /mnt/lvmdisk/series &gt; /dev/null 2&gt;<span class="p">&amp;</span>1</code></pre></div>
+
+
+
+
+	
+  </div>
+    <p>
+      <a href="/2014/11/21/partially-synchronising-a-structured-folder-to-smaller-storage/">Permalink</a>
+    </p>
+</div>
+<hr>
+
+
+
+
+<div class="row-fluid">
+  <div class="span12">
+    <div class="pagination">
+      <ul>
+        
+        <li><span class="disabled">Prev</span></li>
+        
+        
+        <li><span class="active">1</span></li>
+        
+        
+          
+          <li><a href="/page2">2</a></li>
+          
+        
+          
+          <li><a href="/page3">3</a></li>
+          
+        
+          
+          <li><a href="/page4">4</a></li>
+          
+        
+        
+        <li><a href="/page2">Next</a></li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+
+
+  </div>
+  <div class="span4">
+    <div id="about"><h3>About me</h3></div>
+
+<p>
+Rick van de Loo, software developer in the Amsterdam area. I like devops, cloud, python and LISP.
+<br>
+<br>
+Find me on <a href="https://github.com/vdloo">Github</a> or <a href="mailto:rickvandeloo@gmail.com">drop me a line</a></p>
+<hr>
+
+<p>Other posts:</p>
+<ul>
+  
+    <li><a href="/2016/01/31/managing-dns-for-moving-devices-using-consul-and-cjdns/">Managing dns for moving devices with consul and cjdns</a></li>
+  
+    <li><a href="/2014/11/24/configuring-network-bridge-debian-jessie-static-address/">Configuring a network bridge on Debian 8.0 for static addresses</a></li>
+  
+    <li><a href="/2014/11/21/partially-synchronising-a-structured-folder-to-smaller-storage/">Partially synchronising a structured folder (on a Synology machine) to a smaller storage</a></li>
+  
+    <li><a href="/2014/07/03/fibonacci-in-finite-fields-in-racket/">Implementing Fibonacci in finite fields, in racket</a></li>
+  
+    <li><a href="/2014/07/02/why-I-am-starting-the-SICP-reading-project-this-summer/">The SICP reading project</a></li>
+  
+    <li><a href="/2014/01/13/Suspend-and-continue-processes-in-a-shell-script/">Suspend and continue processes (ctrl+z) in a shell script</a></li>
+  
+    <li><a href="/2013/09/21/Fixing-the-ds-audio-and-video-you-are-not-authorized-to-use-this-service-error/">Not authorized to use this service in DS Audio and Video</a></li>
+  
+    <li><a href="/2012/08/01/Sending-data-over-Wi-Fi-without-associations/">Sending data over Wi-Fi without associations</a></li>
+  
+    <li><a href="/2012/08/01/Beacontalk-peer-to-peer-chat-program-that-sends-data-over-Wi-Fi-without-associations/">Beacontalk - Peer to peer chat-program that sends data over Wi-Fi without associations</a></li>
+  
+    <li><a href="/2012/06/03/Playlist2XBMC/">Playlist2XBMC</a></li>
+  
+</ul>
+
+  </div>
+</div>
+</div>
+
+  </body>
+</html>
+

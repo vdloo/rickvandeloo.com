@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>rickvandeloo.com</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Homepage of Rick van de Loo">
+
+    <link href="/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+      body {
+        padding-top: 60px;
+      }
+    </style>
+    <link href="/css/bootstrap-responsive.min.css" rel="stylesheet">
+    <link href="/css/zenburn.css" rel="stylesheet">
+
+    <!-- HTML5 shim, for IE6-8 support of HTML5 elements -->
+    <!--[if lt IE 9]>
+      <script src="http://html5shim.googlecode.com/svn/trunk/html5.js"></sc\
+ript>
+    <![endif]-->
+  </head>
+
+  <body>
+
+    <div class="navbar navbar-inverse navbar-fixed-top">
+      <div class="navbar-inner">
+        <div class="container">
+          <a class="brand" href="/">rickvandeloo.com</a>
+            <ul class="nav">
+              <li class="active"><a href="/">Home</a></li>
+              <li class="btn-navbar active" style="padding: 0;"><a href="#about">About</a></li>
+            </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="container">
+
+
+<div class="row-fluid">
+  <div class="span12">
+    <h1>Configuring a network bridge on Debian 8.0 for static addresses</h1>
+    <p class="muted">24 November 2014</p>
+
+    <p>Setting up bridge-utils to work correctly is something I only have to do
+once every so often. It is one of those things where you end up chasing
+the same rabbit hole of documentation over and over again in order to get
+it to work whilst banging your against the wall. The reason why bridged
+networking can end up being so frustrating isn’t because it is difficult
+(it’s actually pretty straight forward) but because if you mess up, it
+could mean a nice trip down to where you parked the hardware. I mostly use
+network bridging on physical machines in order <a href="http://wiki.qemu.org/Documentation/Networking">to connect qemu machines
+to the internet</a> using
+<a href="http://en.wikipedia.org/wiki/TUN/TAP">TUN/TAP</a>.</p>
+
+<p>Messing up a bridge-utils configuration has resulted in me borking
+networking on remote and headless machines more than once now. To prevent
+myself (and maybe you) some future headaches and lock-outs, this is how to
+configure a bridge by the name of br0 with static IPs for interfaces eth0
+and tap0 on a fresh install of Debian 8.0 jessie/sid.</p>
+
+<p>Firstly make sure bridge-utils is on the system</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="c"># apt-get install bridge-utils</span></code></pre></div>
+
+
+<p>Then put something like this based on your network preferences in
+/etc/network/interfaces.
+I recommend commenting out the original configuration lines instead of
+deleting them.</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash">iface lo inet loopback
+
+allow-hotplug eth0
+iface eth0 inet static
+        address 192.168.1.155   <span class="c">#eth0 ip</span>
+        netmask 255.255.255.0
+        gateway 192.168.1.1
+
+allow-hotplug tap0
+iface tap0 inet static
+        address 192.168.1.4 <span class="c">#tap0 ip</span>
+        netmask 255.255.255.0
+        gateway 192.168.1.1
+
+auto br0
+iface br0 inet static
+        address 192.168.1.2 <span class="c">#bridge ip</span>
+        netmask 255.255.255.0
+        broadcast 192.168.1.255
+        gateway 192.168.1.1
+        bridge_ports eth0 tap0
+        bridge_fd 9
+        bridge_hello 2
+        bridge_maxage 12
+        bridge_stp off</code></pre></div>
+
+
+<p>The next step is unbinding all ipv4 addresses from the eth0 interface and
+restarting networking through systemd.</p>
+
+<p>WARNING: this is the point of no return, there is a good chance you are
+going to lock yourself out of the box. If you have no way of getting
+a shell other than through the network, think twice before proceeding.
+I take no responsibility of you break something. More information
+<a href="http://www.tldp.org/HOWTO/Ethernet-Bridge-netfilter-HOWTO-3.html">here</a>.</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="c"># ifconfig eth0 0.0.0.0 down; systemctl restart networking</span></code></pre></div>
+
+
+<p>Or the non systemd way:</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="c"># ifconfig eth0 0.0.0.0 down; service networking restart</span></code></pre></div>
+
+
+
+
+  </div>
+</div>
+
+</div>
+
+  </body>
+</html>
+
